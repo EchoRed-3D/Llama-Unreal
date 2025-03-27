@@ -5,6 +5,7 @@
 #include "Internal/LlamaInternal.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Async/Async.h"
+#include "Tickable.h"
 
 FLlamaNative::FLlamaNative()
 {
@@ -15,7 +16,7 @@ FLlamaNative::FLlamaNative()
     {
         const FString Token = FLlamaString::ToUE(TokenPiece);
 
-        //Accumalate
+        //Accumulate
         CombinedPieceText += Token;
 
         FString Partial;
@@ -105,12 +106,27 @@ FLlamaNative::FLlamaNative()
             }
         });
     };
+
+    Internal->OnError = [this](const FString& ErrorMessage, int32 ErrorCode)
+    {
+        const FString ErrorMessageGTSafe = ErrorMessage;
+        EnqueueGTTask([this, ErrorMessageGTSafe, ErrorCode]
+        {
+            if (OnError)
+            {
+                OnError(ErrorMessageGTSafe, ErrorCode);
+            }
+        });
+    };
 }
 
 FLlamaNative::~FLlamaNative()
 {
     StopGeneration();
     bThreadShouldRun = false;
+    
+    //Remove ticker if active
+    RemoveTicker();
 
     //Wait for the thread to stop
     while (bThreadIsActive) 
@@ -243,15 +259,24 @@ void FLlamaNative::SetModelParams(const FLLMModelParams& Params)
 	ModelParams = Params;
 }
 
-void FLlamaNative::LoadModel(TFunction<void(const FString&, int32 StatusCode)> ModelLoadedCallback)
+void FLlamaNative::LoadModel(bool bForceReload, TFunction<void(const FString&, int32 StatusCode)> ModelLoadedCallback)
 {
-    EnqueueBGTask([this, ModelLoadedCallback](int64 TaskId)
+    if (IsModelLoaded() && !bForceReload)
+    {
+        //already loaded, we're done
+        return ModelLoadedCallback(ModelParams.PathToModel, 0);
+    }
+
+    //Copy so these dont get modified during enqueue op
+    const FLLMModelParams ParamsAtLoad = ModelParams;
+
+    EnqueueBGTask([this, ParamsAtLoad, ModelLoadedCallback](int64 TaskId)
     {
         //Unload first if any is loaded
         Internal->UnloadModel();
 
         //Now load it
-        bool bSuccess = Internal->LoadModelFromParams(ModelParams);
+        bool bSuccess = Internal->LoadModelFromParams(ParamsAtLoad);
 
         //Sync model state
         if (bSuccess)
@@ -266,6 +291,7 @@ void FLlamaNative::LoadModel(TFunction<void(const FString&, int32 StatusCode)> M
                 ChatTemplate.Jinja = TemplateString;
 
                 ModelState.ChatTemplateInUse = ChatTemplate;
+                ModelState.bModelIsLoaded = true;
 
                 if (OnModelStateChanged)
                 {
@@ -282,11 +308,8 @@ void FLlamaNative::LoadModel(TFunction<void(const FString&, int32 StatusCode)> M
         {
             EnqueueGTTask([this, ModelLoadedCallback]
             {
-                if (OnError)
-                {
-                    OnError("Failed loading model see logs.");
-                }
-                ModelLoadedCallback(ModelParams.PathToModel, -1);
+                //On error will be triggered earlier in the chain, but forward our model loading error status here
+                ModelLoadedCallback(ModelParams.PathToModel, 15);
             }, TaskId);
         }
     });
@@ -304,6 +327,13 @@ void FLlamaNative::UnloadModel(TFunction<void(int32 StatusCode)> ModelUnloadedCa
         //Reply with code
         EnqueueGTTask([this, ModelUnloadedCallback]
         {
+            ModelState.bModelIsLoaded = false;
+
+            if (OnModelStateChanged)
+            {
+                OnModelStateChanged(ModelState);
+            }
+
             if (ModelUnloadedCallback)
             {
                 ModelUnloadedCallback(0);
@@ -424,7 +454,7 @@ void FLlamaNative::ClearPendingTasks(bool bClearGameThreadCallbacks)
     }
 }
 
-void FLlamaNative::OnTick(float DeltaTime)
+void FLlamaNative::OnGameThreadTick(float DeltaTime)
 {
     //Handle all the game thread callbacks
     if (!GameThreadTasks.IsEmpty())
@@ -441,6 +471,29 @@ void FLlamaNative::OnTick(float DeltaTime)
             }
         }
     }
+}
+
+void FLlamaNative::AddTicker()
+{
+    TickDelegateHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float DeltaTime)
+    {
+        OnGameThreadTick(DeltaTime);
+        return true;
+    }));
+}
+
+void FLlamaNative::RemoveTicker()
+{
+    if (IsNativeTickerActive())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(TickDelegateHandle);
+        TickDelegateHandle = nullptr;
+    }
+}
+
+bool FLlamaNative::IsNativeTickerActive()
+{
+    return TickDelegateHandle.IsValid();
 }
 
 void FLlamaNative::ResetContextHistory(bool bKeepSystemPrompt)

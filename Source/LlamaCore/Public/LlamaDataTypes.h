@@ -13,7 +13,7 @@ enum class EChatTemplateRole : uint8
     Unknown = 255
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnErrorSignature, const FString&, ErrorMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnErrorSignature, const FString&, ErrorMessage, int32, ErrorCode);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTokenGeneratedSignature, const FString&, Token);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnResponseGeneratedSignature, const FString&, Response);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FModelNameSignature, const FString&, ModelName);
@@ -118,6 +118,18 @@ struct FLLMModelAdvancedParams
     //if true sampling params won't be passed (v0.8)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     bool bUseCommonSampler = true;
+
+    //if set above 0.f it will sleep between generation passes to ease gpu pressure
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    float TokenGenerationPacingSleep = 0.f;
+
+    //if set above 0.f it will sleep between prompt passes (chunking) to ease gpu pressure
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    float PromptProcessingPacingSleep = 0.f;
+
+    //this part is only active if PromptProcessingPacingSleep > 0.f. Splits prompts into n chunks with sleep
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 PromptProcessingPacingSplitN = 4;
 
     //usually . ? !
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
@@ -227,6 +239,10 @@ struct FLLMModelParams
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     bool bAutoInsertSystemPromptOnLoad = true;
 
+    //applies to component API
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    bool bAutoLoadModelOnStartup = true;
+
     //If not different than default empty, no template will be applied
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     FJinjaChatTemplate CustomChatTemplate = "";
@@ -263,6 +279,9 @@ USTRUCT(BlueprintType)
 struct FLLMModelState
 {
     GENERATED_USTRUCT_BODY();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model State")
+    bool bModelIsLoaded = false;
 
     //The raw context history with formatting applied
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model State")

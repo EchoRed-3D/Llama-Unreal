@@ -1,12 +1,13 @@
 // Copyright 2025-current Getnamo.
 
-#include "LlamaComponent.h"
+#include "LlamaSubsystem.h"
+#include "HAL/PlatformTime.h"
+#include "Tickable.h"
 #include "LlamaNative.h"
-#include "LlamaUtility.h"
 
-ULlamaComponent::ULlamaComponent(const FObjectInitializer &ObjectInitializer)
-    : UActorComponent(ObjectInitializer)
+void ULlamaSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	Super::Initialize(Collection);
     LlamaNative = new FLlamaNative();
 
     //Hookup native callbacks
@@ -33,50 +34,24 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer &ObjectInitializer)
         OnError.Broadcast(ErrorMessage, ErrorCode);
     };
 
-    PrimaryComponentTick.bCanEverTick = true;
-    PrimaryComponentTick.bStartWithTickEnabled = true;
-
     //All sentence ending formatting.
     ModelParams.Advanced.PartialsSeparators.Add(TEXT("."));
     ModelParams.Advanced.PartialsSeparators.Add(TEXT("?"));
     ModelParams.Advanced.PartialsSeparators.Add(TEXT("!"));
 }
 
-ULlamaComponent::~ULlamaComponent()
+void ULlamaSubsystem::Deinitialize()
 {
 	if (LlamaNative)
 	{
 		delete LlamaNative;
 		LlamaNative = nullptr;
 	}
+
+    Super::Deinitialize();
 }
 
-void ULlamaComponent::Activate(bool bReset)
-{
-    Super::Activate(bReset);
-
-    if (ModelParams.bAutoLoadModelOnStartup)
-    {
-        LoadModel(true);
-    }
-}
-
-void ULlamaComponent::Deactivate()
-{
-    Super::Deactivate();
-}
-
-void ULlamaComponent::TickComponent(float DeltaTime,
-                                    ELevelTick TickType,
-                                    FActorComponentTickFunction* ThisTickFunction)
-{
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    //Forward tick to llama so it can process the game thread callbacks
-    LlamaNative->OnGameThreadTick(DeltaTime);
-}
-
-void ULlamaComponent::InsertTemplatedPrompt(const FString& Text, EChatTemplateRole Role, bool bAddAssistantBOS, bool bGenerateReply)
+void ULlamaSubsystem::InsertTemplatedPrompt(const FString& Text, EChatTemplateRole Role, bool bAddAssistantBOS, bool bGenerateReply)
 {
     FLlamaChatPrompt ChatPrompt;
     ChatPrompt.Prompt = Text;
@@ -86,7 +61,7 @@ void ULlamaComponent::InsertTemplatedPrompt(const FString& Text, EChatTemplateRo
     InsertTemplatedPromptStruct(ChatPrompt);
 }
 
-void ULlamaComponent::InsertTemplatedPromptStruct(const FLlamaChatPrompt& ChatPrompt)
+void ULlamaSubsystem::InsertTemplatedPromptStruct(const FLlamaChatPrompt& ChatPrompt)
 {
     LlamaNative->InsertTemplatedPrompt(ChatPrompt, [this, ChatPrompt](const FString& Response)
     {
@@ -98,7 +73,7 @@ void ULlamaComponent::InsertTemplatedPromptStruct(const FLlamaChatPrompt& ChatPr
     });
 }
 
-void ULlamaComponent::InsertRawPrompt(const FString& Text, bool bGenerateReply)
+void ULlamaSubsystem::InsertRawPrompt(const FString& Text, bool bGenerateReply)
 {
     LlamaNative->InsertRawPrompt(Text, bGenerateReply, [this, bGenerateReply](const FString& Response)
     {
@@ -110,13 +85,21 @@ void ULlamaComponent::InsertRawPrompt(const FString& Text, bool bGenerateReply)
     });
 }
 
-void ULlamaComponent::LoadModel(bool bForceReload)
+void ULlamaSubsystem::LoadModel(bool bForceReload)
 {
+    //Sync gt params
     LlamaNative->SetModelParams(ModelParams);
+
+    //If ticker isn't active right now, start it. This will stay active until subsystem gets destroyed.
+    if (!LlamaNative->IsNativeTickerActive())
+    {
+        LlamaNative->AddTicker();
+    }
+
     LlamaNative->LoadModel(bForceReload, [this](const FString& ModelPath, int32 StatusCode)
     {
         //We errored, the emit will happen before we reach here so just exit
-        if (StatusCode !=0)
+        if (StatusCode != 0)
         {
             return;
         }
@@ -130,61 +113,55 @@ void ULlamaComponent::LoadModel(bool bForceReload)
     });
 }
 
-void ULlamaComponent::UnloadModel()
+void ULlamaSubsystem::UnloadModel()
 {
     LlamaNative->UnloadModel([this](int32 StatusCode)
     {
-        //this pretty much should never get called, just in case: emit.
         if (StatusCode != 0)
         {
-            FString ErrorMessage = FString::Printf(TEXT("UnloadModel returned error code: %d"), StatusCode);
+            FString ErrorMessage = FString::Printf(TEXT("UnloadModel return error code: %d"), StatusCode);
             UE_LOG(LlamaLog, Warning, TEXT("%s"), *ErrorMessage);
             OnError.Broadcast(ErrorMessage, StatusCode);
         }
     });
 }
 
-bool ULlamaComponent::IsModelLoaded()
+bool ULlamaSubsystem::IsModelLoaded()
 {
     return ModelState.bModelIsLoaded;
 }
 
-void ULlamaComponent::ResetContextHistory(bool bKeepSystemPrompt)
+void ULlamaSubsystem::ResetContextHistory(bool bKeepSystemPrompt)
 {
     LlamaNative->ResetContextHistory(bKeepSystemPrompt);
 }
 
-void ULlamaComponent::RemoveLastAssistantReply()
+void ULlamaSubsystem::RemoveLastAssistantReply()
 {
     LlamaNative->RemoveLastReply();
 }
 
-void ULlamaComponent::RemoveLastUserInput()
+void ULlamaSubsystem::RemoveLastUserInput()
 {
     LlamaNative->RemoveLastUserInput();
 }
 
-FString ULlamaComponent::WrapPromptForRole(const FString& Text, EChatTemplateRole Role, const FString& Template)
-{
-    return LlamaNative->WrapPromptForRole(Text, Role, Template);
-}
-
-void ULlamaComponent::StopGeneration()
+void ULlamaSubsystem::StopGeneration()
 {
     LlamaNative->StopGeneration();
 }
 
-void ULlamaComponent::ResumeGeneration()
+void ULlamaSubsystem::ResumeGeneration()
 {
     LlamaNative->ResumeGeneration();
 }
 
-FString ULlamaComponent::RawContextHistory()
+FString ULlamaSubsystem::RawContextHistory()
 {
     return ModelState.ContextHistory;
 }
 
-FStructuredChatHistory ULlamaComponent::GetStructuredChatHistory()
+FStructuredChatHistory ULlamaSubsystem::GetStructuredChatHistory()
 {
     return ModelState.ChatHistory;
 }

@@ -4,7 +4,6 @@
 
 #include "LlamaDataTypes.h"
 #include "CoreMinimal.h"
-//#include "LlamaNative.generated.h"
 
 
 /** 
@@ -22,14 +21,14 @@ public:
 	TFunction<void(int32 TokensProcessed, EChatTemplateRole ForRole, float Speed)> OnPromptProcessed;	//when an inserted prompt has finished processing (non-generation prompt)
 	TFunction<void()> OnGenerationStarted;
 	TFunction<void(const FLlamaRunTimings& Timings)> OnGenerationFinished;
-	TFunction<void(const FString& ErrorMessage)> OnError;
+	TFunction<void(const FString& ErrorMessage, int32 ErrorCode)> OnError;
 	TFunction<void(const FLLMModelState& UpdatedModelState)> OnModelStateChanged;
 
 	//Expected to be set before load model
 	void SetModelParams(const FLLMModelParams& Params);
 
 	//Loads the model found at ModelParams.PathToModel, use SetModelParams to specify params before loading
-	void LoadModel(TFunction<void(const FString&, int32 StatusCode)> ModelLoadedCallback = nullptr);
+	void LoadModel(bool bForceReload = false, TFunction<void(const FString&, int32 StatusCode)> ModelLoadedCallback = nullptr);
 	void UnloadModel(TFunction<void(int32 StatusCode)> ModelUnloadedCallback = nullptr);
 	bool IsModelLoaded();
 
@@ -45,8 +44,11 @@ public:
 	//if you've queued up a lot of BG tasks, you can clear the queue with this call
 	void ClearPendingTasks(bool bClearGameThreadCallbacks = false);
 
-	//tick forward for safely consuming game thread messages without hanging
-	void OnTick(float DeltaTime);
+	//tick forward for safely consuming game thread messages
+	void OnGameThreadTick(float DeltaTime);
+	void AddTicker();	 //optional call this once if you don't forward ticks from e.g. component/actor tick
+	void RemoveTicker(); //if you use AddTicker, use remove ticker to balance on exit. Will happen on destruction of FLlamaNative if not called earlier.
+	bool IsNativeTickerActive();
 
 	//Context change - not yet implemented
 	void ResetContextHistory(bool bKeepSystemPrompt = false);	//full reset
@@ -54,10 +56,10 @@ public:
 	void RemoveLastReply();		//chat rollback to undo last assistant input.
 	void RegenerateLastReply(); //removes last reply and regenerates (changing seed?)
 
-	//Todo: Use this api + state checks to use RemoveLastInput and RemoveLastReply wrappers.
+	//Base api to do message rollback
 	void RemoveLastNMessages(int32 MessageCount);	//rollback
 
-	//Pure query of current context - not threadsafe, be careful when these get called - TBD: make it safe
+	//Pure query of current game thread context
 	void SyncPassedModelStateToNative(FLLMModelState& StateToSync);
 
 	FString WrapPromptForRole(const FString& Text, EChatTemplateRole Role, const FString& OverrideTemplate, bool bAddAssistantBoS = false);
@@ -65,11 +67,11 @@ public:
 	FLlamaNative();
 	~FLlamaNative();
 
-	float ThreadIdleSleepDuration = 0.005f; //5ms sleep timer for BG thread
+	float ThreadIdleSleepDuration = 0.005f;        //default sleep timer for BG thread in sec.
 
 protected:
 
-	//can be safely called on game thread or the bg thread, handles either logic
+	//can be safely called on game thread or the bg thread
 	void SyncModelStateToInternal(TFunction<void()>AdditionalGTStateUpdates = nullptr);
 
 	//utility functions, only safe to call on bg thread
@@ -81,7 +83,7 @@ protected:
 	FLLMModelParams ModelParams;
 	FLLMModelState ModelState;
 
-	//BG State
+	//BG State - do not read/write on GT
 	FString CombinedPieceText;	//accumulates tokens into full string during per-token inference.
 
 	//Threading
@@ -97,4 +99,5 @@ protected:
 	void EnqueueGTTask(TFunction<void()> Task, int64 LinkedTaskId = -1);
 
 	class FLlamaInternal* Internal = nullptr;
+	FTSTicker::FDelegateHandle TickDelegateHandle = nullptr; //optional tick handle - used in subsystem example where tick isn't natively supported
 };
