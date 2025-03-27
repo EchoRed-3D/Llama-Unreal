@@ -122,6 +122,13 @@ struct FLLMModelAdvancedParams
     //usually . ? !
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     TArray<FString> PartialsSeparators;
+
+    // optional BNF-like grammar to constrain sampling
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Advanced Params - Grammar", meta = (MultiLine = true))
+    FString Grammar = TEXT("");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (MultiLine = true), Category = "LLM Model Advanced Params - Grammar")
+    bool bEnableGrammarLazy = false;
 };
 
 USTRUCT(BlueprintType)

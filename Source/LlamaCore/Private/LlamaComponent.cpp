@@ -2,6 +2,7 @@
 
 #include "LlamaComponent.h"
 #include "LlamaNative.h"
+#include "LlamaUtility.h"
 
 ULlamaComponent::ULlamaComponent(const FObjectInitializer &ObjectInitializer)
     : UActorComponent(ObjectInitializer)

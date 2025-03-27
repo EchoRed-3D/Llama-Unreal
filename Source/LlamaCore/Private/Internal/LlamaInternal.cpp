@@ -5,6 +5,8 @@
 #include "LlamaUtility.h"
 #include "HardwareInfo.h"
 
+
+
 bool FLlamaInternal::LoadModelFromParams(const FLLMModelParams& InModelParams)
 {
     FString RHI = FHardwareInfo::GetHardwareDetailsString();
@@ -48,6 +50,8 @@ bool FLlamaInternal::LoadModelFromParams(const FLLMModelParams& InModelParams)
         UE_LOG(LlamaLog, Error, TEXT("%hs: error: failed to create the llama_context\n"), __func__);
         return false;
     }
+ 
+
 
     //common sampler strategy
 
@@ -82,6 +86,12 @@ bool FLlamaInternal::LoadModelFromParams(const FLLMModelParams& InModelParams)
         if (InModelParams.Seed != -1)
         {
             SamplingParams.seed = InModelParams.Seed;
+        }
+
+        if (!InModelParams.Advanced.Grammar.IsEmpty())
+        {
+            SamplingParams.grammar = FLlamaString::ToStd(InModelParams.Advanced.Grammar);
+            SamplingParams.grammar_lazy = InModelParams.Advanced.bEnableGrammarLazy;
         }
 
         CommonSampler = common_sampler_init(LlamaModel, SamplingParams);
@@ -178,6 +188,8 @@ bool FLlamaInternal::LoadModelFromParams(const FLLMModelParams& InModelParams)
     }
     
     FilledContextCharLength = 0;
+
+    
 
     bIsModelLoaded = true;
 

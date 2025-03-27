@@ -35,10 +35,10 @@ struct common_adapter_lora_info {
 using llama_tokens = std::vector<llama_token>;
 
 // build info
-int LLAMA_BUILD_NUMBER = 0;
-const char* LLAMA_COMMIT = "f08f4b3187b691bb08a8884ed39ebaa94e956707";
-const char* LLAMA_COMPILER = "";
-const char* LLAMA_BUILD_TARGET = "Vulkan - Unreal";
+extern int LLAMA_BUILD_NUMBER;
+extern const char * LLAMA_COMMIT;
+extern const char * LLAMA_COMPILER;
+extern const char * LLAMA_BUILD_TARGET;
 
 struct common_control_vector_load_info;
 
