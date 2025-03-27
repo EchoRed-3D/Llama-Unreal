@@ -358,3 +358,35 @@ public:
     {
     }
 };
+
+
+//Initial state fed into the model
+USTRUCT(BlueprintType)
+struct FLLMRetrivalParams
+{
+    GENERATED_BODY()
+
+public:
+
+    FLLMRetrivalParams() {}
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    FString PathToModel = "./model.gguf";
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 GPULayers = 50;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 Threads = 8;
+
+    // logical batch size for prompt processing (must be >=32 to use BLAS)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 n_batch = 1024;
+
+    // chunk size for context embedding
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 chunk_size = 64; 
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 top_k = 40;
+};
