@@ -22,21 +22,36 @@ public:
 	~ULlamaRetrievalComponent();
 
 
+	//Callback
+	UPROPERTY(BlueprintAssignable)
+	FModelNameSignature OnModelLoaded;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnVectorStoreCreated OnVectorStoreCreated;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnQueryReponses OnQueryReponses;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM  Retrival Component")
 	FLLMRetrivalParams RetrivalParams;
 
+	//This state gets updated typically after every response
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Component")
+	FLLMModelState ModelState;
 
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM  Retrival Component")
-	//TArray<FString> ContextFiles;
 
 	UFUNCTION(BlueprintCallable, Category = "LLM Retrival Component")
-	void TryBuildVectorDataBase(TArray<FString> ContextFiles);
+	void LoadModel(bool bForceReload = true);
 
 	UFUNCTION(BlueprintCallable, Category = "LLM Retrival Component")
 	void Unload();
 
 	UFUNCTION(BlueprintCallable, Category = "LLM Retrival Component")
-	FString Query(FString Query);
+	void CreateVectorStore(TArray<FString> ContextFiles);
+
+	UFUNCTION(BlueprintCallable, Category = "LLM Retrival Component")
+	void QueryVectorStore(FLLMVectorStore VectorStore, FString Query);
+
 
 protected:
 	// Called when the game starts
@@ -49,5 +64,5 @@ public:
 	
 
 private:
-	class LlamaRetrieval* Retrieval;
+	class FLlamaNativeRetrieval* NativeRetrieval;
 };

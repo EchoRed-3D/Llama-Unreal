@@ -13,6 +13,34 @@ enum class EChatTemplateRole : uint8
     Unknown = 255
 };
 
+struct chunk {
+    // filename
+    std::string filename;
+    // original file position
+    size_t filepos;
+    // original text data
+    std::string textdata;
+    // tokenized text data
+    std::vector<int32_t> tokens;
+    // embedding
+    std::vector<float> embedding;
+};
+
+USTRUCT(BlueprintType)
+struct FLLMVectorStore
+{
+    GENERATED_BODY()
+
+public:
+
+    FLLMVectorStore() {}
+    FLLMVectorStore(std::vector<chunk> In) : VectorStore(In) {}
+
+    std::vector<chunk> VectorStore;
+
+    bool IsValid() { return VectorStore.size() > 0; }
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnErrorSignature, const FString&, ErrorMessage, int32, ErrorCode);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTokenGeneratedSignature, const FString&, Token);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnResponseGeneratedSignature, const FString&, Response);
@@ -22,6 +50,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPromptHistorySignature, FString, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEndOfStreamSignature, bool, bStopSequenceTriggered, float, TokensPerSecond);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPromptProcessedSignature, int32, TokensProcessed, EChatTemplateRole, Role, float, TokensPerSecond);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FVoidEventSignature);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVectorStoreCreated, const FLLMVectorStore&, VectorStore);
+
 
 USTRUCT(BlueprintType)
 struct FLlamaRunTimings
@@ -398,3 +429,37 @@ public:
     int32 TopK = 40;
 
 };
+
+
+
+USTRUCT(BlueprintType)
+struct FLLMQueryReponse
+{
+    GENERATED_BODY()
+
+public:
+
+    FLLMQueryReponse() {}
+    FLLMQueryReponse(FString InFilename, int64 InFilepos, float InSimi, FString InTextData) : 
+        Filename(InFilename),
+        Filepos(InFilepos),
+        Similarity(InSimi),
+        TextData(InTextData)
+    {}
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Query Reponse")
+    FString Filename = "";
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Query Reponse")
+    int64 Filepos = 1;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Query Reponse")
+    float Similarity = 0.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Query Reponse")
+    FString TextData = "";
+
+};
+
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQueryReponses, const TArray<FLLMQueryReponse>&, QueryReponses);

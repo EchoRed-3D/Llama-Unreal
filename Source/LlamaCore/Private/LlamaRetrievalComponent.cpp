@@ -2,12 +2,22 @@
 
 
 #include "LlamaRetrievalComponent.h"
-#include "Internal/LlamaRetrieval.h"
+#include "LlamaNativeRetrieval.h"
 #include "LlamaUtility.h"
 
 ULlamaRetrievalComponent::ULlamaRetrievalComponent(const FObjectInitializer& ObjectInitializer) : UActorComponent(ObjectInitializer)
 {
-	Retrieval = new LlamaRetrieval();
+	NativeRetrieval = new FLlamaNativeRetrieval();
+
+	//Hookup native callbacks
+	NativeRetrieval->OnModelStateChanged = [this](const FLLMModelState& UpdatedModelState)
+	{
+			ModelState = UpdatedModelState;
+	};
+
+
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 // Sets default values for this component's properties
@@ -15,26 +25,54 @@ ULlamaRetrievalComponent::ULlamaRetrievalComponent()
 {
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
-
+	
 	// ...
 }
 
 ULlamaRetrievalComponent::~ULlamaRetrievalComponent()
 {
-	if (Retrieval)
+	if (NativeRetrieval)
 	{
-		delete Retrieval;
-		Retrieval = nullptr;
+		delete NativeRetrieval;
+		NativeRetrieval = nullptr;
 	}
 }
 
 
-void ULlamaRetrievalComponent::TryBuildVectorDataBase(TArray<FString> ContextFiles)
+void ULlamaRetrievalComponent::LoadModel(bool bForceReload)
+{
+	NativeRetrieval->SetRetrievalParams(RetrivalParams);
+	NativeRetrieval->LoadModel(bForceReload, [this](const FString& ModelPath, int32 StatusCode)
+	{
+		//We errored, the emit will happen before we reach here so just exit
+		if (StatusCode != 0)
+		{
+			return;
+		}
+
+		OnModelLoaded.Broadcast(ModelPath);
+	});
+}
+
+
+void ULlamaRetrievalComponent::Unload()
+{
+	NativeRetrieval->UnloadModel([this](int32 StatusCode)
+		{
+			//this pretty much should never get called, just in case: emit.
+			if (StatusCode != 0)
+			{
+				FString ErrorMessage = FString::Printf(TEXT("UnloadModel returned error code: %d"), StatusCode);
+				UE_LOG(LlamaLog, Warning, TEXT("%s"), *ErrorMessage);				
+			}
+		});
+}
+
+void ULlamaRetrievalComponent::CreateVectorStore(TArray<FString> ContextFiles)
 {
 	if (ContextFiles.IsEmpty())
 	{
-		UE_LOG(LlamaLog,Warning,TEXT("ContextFiles is Empty"))
+		UE_LOG(LlamaLog, Warning, TEXT("ContextFiles is Empty"))
 		return;
 	}
 
@@ -45,17 +83,37 @@ void ULlamaRetrievalComponent::TryBuildVectorDataBase(TArray<FString> ContextFil
 		context_files.push_back(FLlamaString::ToStd(File));
 	}
 
-	Retrieval->BuildVectorDataBase(RetrivalParams, context_files);
+	NativeRetrieval->SetContextFiles(context_files);
+	NativeRetrieval->CreateVectorStore([this](FLLMVectorStore VectorStore, int32 StatusCode)
+		{
+			if (StatusCode != 0)
+			{
+				return;
+			}
+
+			OnVectorStoreCreated.Broadcast(VectorStore);
+
+		});
 }
 
-void ULlamaRetrievalComponent::Unload()
+void ULlamaRetrievalComponent::QueryVectorStore(FLLMVectorStore VectorStore, FString Query)
 {
-	Retrieval->Unload();
-}
+	if (!VectorStore.IsValid())
+	{
+		UE_LOG(LlamaLog, Warning, TEXT("Invalid Vector Store"));
+		return;
+	}
 
-FString ULlamaRetrievalComponent::Query(FString Query)
-{
-	return Retrieval->Query(Query);
+	NativeRetrieval->QueryVectorSore(VectorStore, Query, [this](TArray<FLLMQueryReponse> QueryReponse, int32 StatusCode) 
+		{
+			if (StatusCode != 0)
+			{
+				return;
+			}
+
+			OnQueryReponses.Broadcast(QueryReponse);
+
+		});
 }
 
 // Called when the game starts
@@ -73,6 +131,8 @@ void ULlamaRetrievalComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+
+	NativeRetrieval->OnGameThreadTick(DeltaTime);
 	// ...
 }
 

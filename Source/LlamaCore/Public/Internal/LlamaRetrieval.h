@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "LlamaDataTypes.h"
 #include "common/Common.h"
 #include "llama.h"
 
@@ -10,23 +11,12 @@
 #include <fstream>
 #include <iostream>
 
-struct chunk {
-    // filename
-    std::string filename;
-    // original file position
-    size_t filepos;
-    // original text data
-    std::string textdata;
-    // tokenized text data
-    std::vector<llama_token> tokens;
-    // embedding
-    std::vector<float> embedding;
-};
+
 
 /**
  * 
  */
-class LLAMACORE_API LlamaRetrieval
+class LLAMACORE_API FLlamaRetrieval
 {
 public:
 
@@ -35,24 +25,27 @@ public:
 	llama_context* Context = nullptr;
     common_params params;
 
+    //Model loading
+    bool LoadModel(struct FLLMRetrivalParams Params);
+    void UnloadModel();
+    bool IsModelLoaded();
 
-    void BuildVectorDataBase(struct FLLMRetrivalParams Params, std::vector<std::string> context_files);
-    void Unload();
 
-    FString Query(FString Query);
-
-
-    LlamaRetrieval();
-    ~LlamaRetrieval();
-
+    std::vector<chunk> CreateVectorStore(std::vector<std::string> context_files);
     // Step 1 Loader And Splitter
+    std::vector<chunk> SplitterFiles(std::vector<std::string> context_files, int chunk_size, const std::string& chunk_separator);
     // Step 2 Embedding
-    // Step 3 Vector Store
-    // Step 4 Retrieval : Query
+    bool EmbeddingFiles(std::vector<chunk>& ChunkFiles);
+
+    // Step 3 Retrieval : Query
+    TArray<FLLMQueryReponse> QueryVectorStore(std::vector <chunk> VectorStore, FString Query);
+
+    FLlamaRetrieval();
+    ~FLlamaRetrieval();
+
 
 protected:
 
-    std::vector<chunk> chunk_files(std::vector<std::string> context_files, int chunk_size, const std::string& chunk_separator);
     std::vector<chunk> chunk_file(const std::string& filename, int chunk_size, const std::string& chunk_separator);
 
     void batch_add_seq(llama_batch& batch, const std::vector<int32_t>& tokens, llama_seq_id seq_id);
@@ -63,4 +56,7 @@ protected:
     std::vector<chunk> chunks;
 
 
+    FThreadSafeBool bIsModelLoaded = false;
+    int32 FilledContextCharLength = 0;
+    FThreadSafeBool bGenerationActive = false;
 };

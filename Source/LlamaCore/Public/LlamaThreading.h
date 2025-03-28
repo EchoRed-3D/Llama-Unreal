@@ -38,9 +38,11 @@ protected:
 	FThreadSafeCounter TaskIdCounter = 0;
 	int64 GetNextTaskId();
 
+	// Background Thread Tasks
 	void EnqueueBGTask(TFunction<void(int64)> Task);
+	// Game Thread Tasks 
 	void EnqueueGTTask(TFunction<void()> Task, int64 LinkedTaskId = -1);
 
-	class FLlamaInternal* Internal = nullptr;
+
 	FTSTicker::FDelegateHandle TickDelegateHandle = nullptr; //optional tick handle - used in subsystem example where tick isn't natively supported
 };

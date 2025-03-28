@@ -14,6 +14,8 @@ FLlamaThreading::FLlamaThreading()
 
 FLlamaThreading::~FLlamaThreading()
 {
+    bThreadShouldRun = false;
+
     //Remove ticker if active
     RemoveTicker();
 

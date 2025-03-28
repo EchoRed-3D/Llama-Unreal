@@ -123,16 +123,7 @@ FLlamaNative::FLlamaNative()
 FLlamaNative::~FLlamaNative()
 {
     StopGeneration();
-    bThreadShouldRun = false;
-    
-    //Remove ticker if active
-    RemoveTicker();
-
-    //Wait for the thread to stop
-    while (bThreadIsActive) 
-    {
-        FPlatformProcess::Sleep(0.01f);
-    }
+   
     delete Internal;
 }
 
@@ -182,76 +173,6 @@ void FLlamaNative::SyncModelStateToInternal(TFunction<void()> AdditionalGTStateU
         BGSyncAction(GetNextTaskId());
     }
     
-}
-
-void FLlamaNative::StartLLMThread()
-{
-    bThreadShouldRun = true;
-    Async(EAsyncExecution::Thread, [this]
-    {
-        bThreadIsActive = true;
-
-        while (bThreadShouldRun)
-        {
-            //Run all queued tasks
-            while (!BackgroundTasks.IsEmpty())
-            {
-                FLLMThreadTask Task;
-                BackgroundTasks.Dequeue(Task);
-                if (Task.TaskFunction)
-                {
-                    //Run Task
-                    Task.TaskFunction(Task.TaskId);
-                }
-            }
-
-            FPlatformProcess::Sleep(ThreadIdleSleepDuration);
-        }
-
-        bThreadIsActive = false;
-    });
-}
-
-int64 FLlamaNative::GetNextTaskId()
-{
-    //technically returns an int32
-    return TaskIdCounter.Increment();
-}
-
-void FLlamaNative::EnqueueBGTask(TFunction<void(int64)> TaskFunction)
-{
-    //Lazy start the thread on first enqueue
-    if (!bThreadIsActive)
-    {
-        StartLLMThread();
-    }
-
-    FLLMThreadTask Task;
-    Task.TaskId = GetNextTaskId();
-    Task.TaskFunction = TaskFunction;
-
-    BackgroundTasks.Enqueue(Task);
-}
-
-void FLlamaNative::EnqueueGTTask(TFunction<void()> TaskFunction, int64 LinkedTaskId)
-{
-    FLLMThreadTask Task;
-    
-    if (LinkedTaskId == -1)
-    {
-        Task.TaskId = GetNextTaskId();
-    }
-    else
-    {
-        Task.TaskId = LinkedTaskId;
-    }
-
-    Task.TaskFunction = [TaskFunction](int64 InTaskId) 
-    {
-        TaskFunction();
-    };
-
-    GameThreadTasks.Enqueue(Task);
 }
 
 void FLlamaNative::SetModelParams(const FLLMModelParams& Params)
@@ -442,58 +363,6 @@ void FLlamaNative::ResumeGeneration()
     {
         Internal->ResumeGeneration();
     });
-}
-
-void FLlamaNative::ClearPendingTasks(bool bClearGameThreadCallbacks)
-{
-    BackgroundTasks.Empty();
-
-    if (bClearGameThreadCallbacks)
-    {
-        GameThreadTasks.Empty();
-    }
-}
-
-void FLlamaNative::OnGameThreadTick(float DeltaTime)
-{
-    //Handle all the game thread callbacks
-    if (!GameThreadTasks.IsEmpty())
-    {
-        //Run all queued tasks
-        while (!GameThreadTasks.IsEmpty())
-        {
-            FLLMThreadTask Task;
-            GameThreadTasks.Dequeue(Task);
-            if (Task.TaskFunction)
-            {
-                //Run Task
-                Task.TaskFunction(Task.TaskId);
-            }
-        }
-    }
-}
-
-void FLlamaNative::AddTicker()
-{
-    TickDelegateHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float DeltaTime)
-    {
-        OnGameThreadTick(DeltaTime);
-        return true;
-    }));
-}
-
-void FLlamaNative::RemoveTicker()
-{
-    if (IsNativeTickerActive())
-    {
-        FTSTicker::GetCoreTicker().RemoveTicker(TickDelegateHandle);
-        TickDelegateHandle = nullptr;
-    }
-}
-
-bool FLlamaNative::IsNativeTickerActive()
-{
-    return TickDelegateHandle.IsValid();
 }
 
 void FLlamaNative::ResetContextHistory(bool bKeepSystemPrompt)
