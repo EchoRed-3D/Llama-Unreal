@@ -12,16 +12,20 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
 
     common_init();
 
+    // load dynamic backends
+    ggml_backend_load_all();
+
     std::string Path = TCHAR_TO_UTF8(*FLlamaPaths::ParsePathIntoFullPath(Params.PathToModel));
 
-    common_params params;
-    params.n_batch = Params.n_batch;
-    params.n_ubatch = Params.n_batch;
+    
+    params.n_batch = Params.Nbatch;
+    params.n_ubatch = Params.Nbatch;
+    params.n_ctx = Params.MaxContextLength;
     params.model = Path.c_str();
     params.embedding = true;
-    params.chunk_size = Params.chunk_size;
-    params.sampling.top_k = Params.top_k;
-    top_k = Params.top_k;
+    params.chunk_size = Params.ChunkSize;
+    params.chunk_separator = FLlamaString::ToStd(Params.ChunkSeparator);
+    params.sampling.top_k = Params.TopK;
 
     //Files for embedding
     params.context_files = context_files;
@@ -40,15 +44,11 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
     UE_LOG(LlamaLog, Display, TEXT("cprocessing files:"));
     for (auto& context_file : params.context_files) 
     {
-        UE_LOG(LlamaLog, Display, TEXT("%hs"), context_file.c_str());
+        UE_LOG(LlamaLog, Verbose, TEXT("%hs"), context_file.c_str());
     }
 
-
-    for (auto& context_file : params.context_files) {
-        std::vector<chunk> file_chunk = chunk_file(context_file, params.chunk_size, params.chunk_separator);
-        chunks.insert(chunks.end(), file_chunk.begin(), file_chunk.end());
-    }
-    UE_LOG(LlamaLog, Display, TEXT("Number of chunks: %zu"), chunks.size());
+    // Build ChunkFiles Slicer
+    chunks = chunk_files(params.context_files, params.chunk_size, params.chunk_separator);
 
     llama_backend_init();
     llama_numa_init(params.numa);
@@ -58,6 +58,8 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
 
     LlamaModel = llama_init.model.get();
     Context = llama_init.context.get();
+
+   
 
     if (LlamaModel == NULL)
     {
@@ -90,7 +92,7 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
 
 
     // max batch size
-    n_batch = params.n_batch;
+    const uint64_t n_batch = params.n_batch;
     //GGML_ASSERT(params.n_batch >= params.n_ctx);
 
     if (chunks.size() <= 0)
@@ -102,7 +104,7 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
     for (auto& chunk : chunks) 
     {
         auto inp = common_tokenize(Context, chunk.textdata, true, false);
-        if (inp.size() > n_batch) 
+        if (inp.size() > n_batch)
         {
             UE_LOG(LlamaLog, Error, TEXT("%hs: chunk size (%lld) exceeds batch size (%lld), increase batch size and re-run"),
                 __func__, (long long int) inp.size(), (long long int) n_batch);
@@ -133,11 +135,12 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
 
 
     // initialize batch
-    n_chunks = chunks.size();
+    const int n_chunks = chunks.size();
+    params.n_chunks = n_chunks;
     struct llama_batch batch = llama_batch_init(n_batch, 0, 1);
 
     // allocate output
-    n_embd = llama_model_n_embd(LlamaModel);
+    const int n_embd = llama_model_n_embd(LlamaModel);
     std::vector<float> embeddings(n_chunks * n_embd, 0);
     float* emb = embeddings.data();
 
@@ -177,15 +180,59 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
         chunks[i].tokens.clear();
     }
 
-    query_batch = llama_batch_init(n_batch, 0, 1);
+    Query(FString());
+    
+}
 
+void LlamaRetrieval::Unload()
+{
+    if (Context)
+    {
+        //llama_free(Context);
+        UE_LOG(LlamaLog, Display, TEXT("Unload Context"))
+
+       Context = nullptr;
+    }
+    if (LlamaModel)
+    {
+        //llama_model_free(LlamaModel);
+        UE_LOG(LlamaLog, Display, TEXT("Unload Model"))
+
+        LlamaModel = nullptr;
+    }
+
+    llama_backend_free();
+}
+
+FString LlamaRetrieval::Query(FString Query)
+{
+    if (!Context)
+    {
+        UE_LOG(LlamaLog, Display, TEXT("%hs Context Invalid"),__func__)
+        return FString();
+    }
+
+
+
+    // max batch size
+    const uint64_t n_batch = llama_n_batch(Context);
+    UE_LOG(LlamaLog, Display, TEXT("Query n_batch:%d ctx_n_batch:%d"), params.n_batch, n_batch)
+
+    // initialize batch
+    const int n_chunks = chunks.size();
+    // allocate output
+    const int n_embd = llama_model_n_embd(LlamaModel);
+    // Start Query
+    llama_batch query_batch = llama_batch_init(n_batch, 0, 1);
+  
 
     //std::string query = FLlamaString::ToStd(Query);
-    std::string query = " Quelle est la meilleure formule pour un shampoing sur des cheveux gras ?";
-
+    std::string query = "Quelle est la meilleure formule pour un shampoing sur des cheveux gras ?";
     UE_LOG(LlamaLog, Display, TEXT("Enyer Query : %S"), query.c_str())
-        std::getline(std::cin, query);
-    std::vector<int32_t> query_tokens = common_tokenize(Context, query, true);
+     
+    //std::getline(std::cin, query);
+
+    std::vector<llama_token> query_tokens = common_tokenize(Context, query, true);
 
     batch_add_seq(query_batch, query_tokens, 0);
 
@@ -195,56 +242,32 @@ void LlamaRetrieval::BuildVectorDataBase(struct FLLMRetrivalParams Params, std::
     common_batch_clear(query_batch);
 
     // compute cosine similarities
-    {
-        std::vector<std::pair<int, float>> similarities;
-        for (int i = 0; i < n_chunks; i++) {
-            float sim = common_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
-            similarities.push_back(std::make_pair(i, sim));
+    std::vector<std::pair<int, float>> similarities;
+    for (int i = 0; i < n_chunks; i++) {
+        float sim = common_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
+        similarities.push_back(std::make_pair(i, sim));
+    }
+
+    // sort similarities
+    std::sort(similarities.begin(), similarities.end(), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+        return a.second > b.second;
+        });
+
+    UE_LOG(LlamaLog, Display, TEXT("Top %d similar chunks:"), params.sampling.top_k)
+        for (int i = 0; i < std::min(params.sampling.top_k, (int)chunks.size()); i++)
+        {
+            UE_LOG(LlamaLog, Display, TEXT("filename: %hs"), chunks[similarities[i].first].filename.c_str());
+            UE_LOG(LlamaLog, Display, TEXT("filepos: %lld"), (long long int) chunks[similarities[i].first].filepos);
+            UE_LOG(LlamaLog, Display, TEXT("similarity: %f"), similarities[i].second);
+
+            FString Text = FLlamaString::ToUE((chunks[similarities[i].first].textdata));
+            UE_LOG(LlamaLog, Display, TEXT("textdata:\n%s"), *Text);
+            UE_LOG(LlamaLog, Display, TEXT("--------------------"))
         }
 
-        // sort similarities
-        std::sort(similarities.begin(), similarities.end(), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
-            return a.second > b.second;
-            });
-
-        UE_LOG(LlamaLog, Display, TEXT("Top %d similar chunks:"), top_k)
-            for (int i = 0; i < std::min(top_k, (int)chunks.size()); i++)
-            {
-                UE_LOG(LlamaLog, Display, TEXT("filename: %hs"), chunks[similarities[i].first].filename.c_str());
-                UE_LOG(LlamaLog, Display, TEXT("filepos: %lld"), (long long int) chunks[similarities[i].first].filepos);
-                UE_LOG(LlamaLog, Display, TEXT("similarity: %f"), similarities[i].second);
-
-                FString Text = (chunks[similarities[i].first].textdata.c_str());
-                UE_LOG(LlamaLog, Display, TEXT("textdata:\n%s"), *Text);
-                UE_LOG(LlamaLog, Display, TEXT("--------------------"))
-            }
-    }
-
-    llama_perf_context_print(Context);
-
-}
-
-void LlamaRetrieval::Unload()
-{
-    if (Context)
-    {
-        //llama_free(Context);
-
-        Context = nullptr;
-    }
-    if (LlamaModel)
-    {
-        //llama_model_free(LlamaModel);
-
-        LlamaModel = nullptr;
-    }
-}
-
-FString LlamaRetrieval::Query(FString Query)
-{
-
-
-  
+    //llama_perf_context_print(Context);
+    //llama_kv_cache_clear(Context);
+    llama_batch_free(query_batch);
     return FString();
 }
 
@@ -260,6 +283,19 @@ LlamaRetrieval::~LlamaRetrieval()
 
     //llama_batch_free(query_batch);
     llama_backend_free();
+}
+
+std::vector<chunk> LlamaRetrieval::chunk_files(std::vector<std::string> context_files, int chunk_size, const std::string& chunk_separator)
+{
+    std::vector<chunk> ChunksFiles;
+
+    for (auto& context_file : context_files) {
+        std::vector<chunk> file_chunk = chunk_file(context_file, chunk_size, chunk_separator);
+        ChunksFiles.insert(ChunksFiles.end(), file_chunk.begin(), file_chunk.end());
+    }
+    UE_LOG(LlamaLog, Display, TEXT("Number of chunks: %zu"), ChunksFiles.size());
+
+    return ChunksFiles;
 }
 
 std::vector<chunk> LlamaRetrieval::chunk_file(const std::string& filename, int chunk_size, const std::string& chunk_separator)
@@ -329,7 +365,7 @@ void LlamaRetrieval::batch_decode(llama_context* ctx, llama_batch& batch, float*
 
 
     // run model
-    UE_LOG(LlamaLog, Warning, TEXT("%hs: n_tokens = %d, n_seq = %d"), __func__, batch.n_tokens, n_seq);
+    UE_LOG(LlamaLog, Verbose, TEXT("%hs: n_tokens = %d, n_seq = %d"), __func__, batch.n_tokens, n_seq);
     if (llama_decode(ctx, batch) < 0) 
     {
         UE_LOG(LlamaLog, Warning, TEXT("%hs : failed to decode"), __func__);

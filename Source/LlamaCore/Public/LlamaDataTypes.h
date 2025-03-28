@@ -379,14 +379,22 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     int32 Threads = 8;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    int32 MaxContextLength = 4096;
+
     // logical batch size for prompt processing (must be >=32 to use BLAS)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 n_batch = 1024;
+    int32 Nbatch = 1024;
+
+    // chunk separator for context embedding
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    FString ChunkSeparator = TEXT("\n");
 
     // chunk size for context embedding
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 chunk_size = 64; 
+    int32 ChunkSize = 64; 
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 top_k = 40;
+    int32 TopK = 40;
+
 };

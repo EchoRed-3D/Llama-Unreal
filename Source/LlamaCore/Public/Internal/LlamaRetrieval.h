@@ -33,6 +33,8 @@ public:
 	//Core State
 	llama_model* LlamaModel = nullptr;
 	llama_context* Context = nullptr;
+    common_params params;
+
 
     void BuildVectorDataBase(struct FLLMRetrivalParams Params, std::vector<std::string> context_files);
     void Unload();
@@ -43,9 +45,14 @@ public:
     LlamaRetrieval();
     ~LlamaRetrieval();
 
+    // Step 1 Loader And Splitter
+    // Step 2 Embedding
+    // Step 3 Vector Store
+    // Step 4 Retrieval : Query
+
 protected:
 
-
+    std::vector<chunk> chunk_files(std::vector<std::string> context_files, int chunk_size, const std::string& chunk_separator);
     std::vector<chunk> chunk_file(const std::string& filename, int chunk_size, const std::string& chunk_separator);
 
     void batch_add_seq(llama_batch& batch, const std::vector<int32_t>& tokens, llama_seq_id seq_id);
@@ -53,12 +60,7 @@ protected:
 
 
 
-    int n_embd;
-    int n_chunks;
-    int top_k;
-    uint64_t n_batch;
     std::vector<chunk> chunks;
 
-    llama_batch query_batch;
 
 };
