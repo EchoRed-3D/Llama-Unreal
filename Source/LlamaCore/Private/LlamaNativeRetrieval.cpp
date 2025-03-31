@@ -10,6 +10,17 @@ FLlamaNativeRetrieval::FLlamaNativeRetrieval()
     Retrieval = new FLlamaRetrieval();
 
     //TODO Bind callback
+
+    Retrieval->OnVectorStoreProgress = [this](float PercentProgress, int32 nTokens, int32 nSequence)
+        {
+            if (OnVectorStoreProgress)
+            {
+                EnqueueGTTask([this, PercentProgress, nTokens, nSequence]()
+                    {
+                        OnVectorStoreProgress(PercentProgress, nTokens, nSequence);
+                    });
+            }
+        };
 }
 
 FLlamaNativeRetrieval::~FLlamaNativeRetrieval()
@@ -142,11 +153,11 @@ void FLlamaNativeRetrieval::CreateVectorStore(TFunction<void(FLLMVectorStore Vec
 
 void FLlamaNativeRetrieval::QueryVectorSore(FLLMVectorStore VectorStore, FString Query, TFunction<void(TArray<FLLMQueryReponse>QueryReponse, int32 StatusCode)> ModelQueryCallback)
 {
-    const FLLMVectorStore VectorStoreAtLoad = VectorStore;
+    const  std::vector<chunk> VectorStoreAtLoad = VectorStore.GetChunkStd();
 
     EnqueueBGTask([this, VectorStoreAtLoad, Query, ModelQueryCallback](int64 TaskId)
         {
-            TArray<FLLMQueryReponse> QueryReponse = Retrieval->QueryVectorStore(VectorStoreAtLoad.VectorStore, Query);
+            TArray<FLLMQueryReponse> QueryReponse = Retrieval->QueryVectorStore(VectorStoreAtLoad, Query);
 
             if (!QueryReponse.IsEmpty())
             {

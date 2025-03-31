@@ -16,6 +16,11 @@ ULlamaRetrievalComponent::ULlamaRetrievalComponent(const FObjectInitializer& Obj
 	};
 
 
+	NativeRetrieval->OnVectorStoreProgress = [this](float PercentProgress, int32 nTokens, int32 nSequence)
+		{
+			OnVectorStoreProgress.Broadcast(PercentProgress, nTokens, nSequence);
+		};
+
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = true;
 }

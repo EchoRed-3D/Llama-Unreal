@@ -27,6 +27,9 @@ public:
 	FModelNameSignature OnModelLoaded;
 
 	UPROPERTY(BlueprintAssignable)
+	FOnVectorStoreProgress OnVectorStoreProgress;
+
+	UPROPERTY(BlueprintAssignable)
 	FOnVectorStoreCreated OnVectorStoreCreated;
 
 	UPROPERTY(BlueprintAssignable)

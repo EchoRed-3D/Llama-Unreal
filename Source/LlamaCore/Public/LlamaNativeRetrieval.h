@@ -13,6 +13,8 @@ public:
 
 	//Callbacks
 	TFunction<void(const FLLMModelState& UpdatedModelState)> OnModelStateChanged;
+	TFunction<void(float PercentProgress, int32 nTokens, int32 nSequence)> OnVectorStoreProgress;
+
 
 	FLlamaNativeRetrieval();
 	~FLlamaNativeRetrieval();

@@ -1,6 +1,7 @@
 // Copyright 2025-current Getnamo.
 
 #pragma once
+#include "LlamaUtility.h"
 
 #include "LlamaDataTypes.generated.h"
 
@@ -13,7 +14,10 @@ enum class EChatTemplateRole : uint8
     Unknown = 255
 };
 
-struct chunk {
+struct chunk
+{
+    chunk() {}
+
     // filename
     std::string filename;
     // original file position
@@ -27,6 +31,43 @@ struct chunk {
 };
 
 USTRUCT(BlueprintType)
+struct FLLMChunk
+{
+    GENERATED_BODY()
+
+public:
+
+    FLLMChunk() {}
+    FLLMChunk(chunk InChunk) 
+    {
+        Filename = FLlamaString::ToUE(InChunk.filename);
+        Filepos = InChunk.filepos;
+        Textdata = FLlamaString::ToUE(InChunk.textdata);
+        Embedding = TArray<float>(InChunk.embedding.data(), InChunk.embedding.size());
+    }
+
+    // filename
+    UPROPERTY()
+    FString Filename;
+
+    // original file position
+    UPROPERTY()
+    int64 Filepos; 
+
+    // original text data
+    UPROPERTY()
+    FString Textdata;
+
+    // Embedding
+    UPROPERTY()
+    TArray<float> Embedding;
+
+    //chunk ToStd() { return  chunk(*this); }
+};
+
+
+
+USTRUCT(BlueprintType)
 struct FLLMVectorStore
 {
     GENERATED_BODY()
@@ -34,11 +75,49 @@ struct FLLMVectorStore
 public:
 
     FLLMVectorStore() {}
-    FLLMVectorStore(std::vector<chunk> In) : VectorStore(In) {}
+    FLLMVectorStore(std::vector<chunk> In) : VectorStore(In) 
+    {
+        UeVectorStore.Reset();
+        UeVectorStore.Empty();
+
+        for (auto Chunk : In)  UeVectorStore.Add(FLLMChunk(Chunk));
+    }
+
 
     std::vector<chunk> VectorStore;
 
-    bool IsValid() { return VectorStore.size() > 0; }
+    UPROPERTY()
+    TArray<FLLMChunk> UeVectorStore;
+
+
+    bool IsValid() { return !UeVectorStore.IsEmpty(); }
+
+    std::vector<chunk> GetChunkStd() 
+    {
+        if(!VectorStore.empty()) return VectorStore;
+        
+        // Try reconstuct VectorStore std
+        std::vector<chunk> OutChunk;
+        for (const auto UeChunk : UeVectorStore)
+        {
+            chunk BuildChunk;
+            BuildChunk.filename = FLlamaString::ToStd(UeChunk.Filename);
+            BuildChunk.filepos = UeChunk.Filepos;
+            BuildChunk.textdata = FLlamaString::ToStd(UeChunk.Textdata);
+
+            std::vector<float> BuildEmbedding;
+            for (float Emb : UeChunk.Embedding)
+            {
+                BuildEmbedding.push_back(Emb);
+            }
+            BuildChunk.filename = FLlamaString::ToStd(UeChunk.Filename);
+            BuildChunk.embedding = BuildEmbedding;
+
+            OutChunk.push_back(BuildChunk);
+        }
+        return OutChunk;
+    }
+    TArray<FLLMChunk> GetChunkUe() { return UeVectorStore; }
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnErrorSignature, const FString&, ErrorMessage, int32, ErrorCode);
@@ -51,6 +130,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEndOfStreamSignature, bool, bSto
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPromptProcessedSignature, int32, TokensProcessed, EChatTemplateRole, Role, float, TokensPerSecond);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FVoidEventSignature);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnVectorStoreProgress, float, PercentProgress, int32, Toekns, int32, Sequence);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVectorStoreCreated, const FLLMVectorStore&, VectorStore);
 
 
@@ -418,15 +498,15 @@ public:
     int32 Nbatch = 1024;
 
     // chunk separator for context embedding
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params", meta = (MultiLine = true))
     FString ChunkSeparator = TEXT("\n");
 
     // chunk size for context embedding
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 ChunkSize = 64; 
+    int32 ChunkSize = 256; 
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 TopK = 40;
+    int32 TopK = 4;
 
 };
 

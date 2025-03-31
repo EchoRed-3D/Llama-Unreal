@@ -25,6 +25,10 @@ public:
 	llama_context* Context = nullptr;
     common_params params;
 
+    //main streaming callback
+    TFunction<void(float PercentProgress, int32 nTokens, int32 nSequence)>OnVectorStoreProgress = nullptr;
+
+
     //Model loading
     bool LoadModel(struct FLLMRetrivalParams Params);
     void UnloadModel();

@@ -299,7 +299,8 @@ bool FLlamaRetrieval::EmbeddingFiles(std::vector<chunk>& ChunkFiles)
     // break into batches
     int p = 0; // number of prompts processed already
     int s = 0; // number of prompts in current batch
-    for (int k = 0; k < n_chunks; k++) {
+    for (int k = 0; k < n_chunks; k++) 
+    {
         // clamp to n_batch tokens
         auto& inp = ChunkFiles[k].tokens;
 
@@ -312,6 +313,12 @@ bool FLlamaRetrieval::EmbeddingFiles(std::vector<chunk>& ChunkFiles)
             common_batch_clear(batch);
             p += s;
             s = 0;
+        }
+
+        if (OnVectorStoreProgress)
+        {
+           const float PercentProgress = float(k) / float(n_chunks);
+           OnVectorStoreProgress(PercentProgress, batch.n_tokens, s);
         }
 
         // add to batch
@@ -352,12 +359,15 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int 
     char buffer[1024];
     int64_t filepos = 0;
     std::string current;
-    while (f.read(buffer, 1024)) {
+    while (f.read(buffer, 1024)) 
+    {
         current += std::string(buffer, f.gcount());
         size_t pos;
-        while ((pos = current.find(chunk_separator)) != std::string::npos) {
+        while ((pos = current.find(chunk_separator)) != std::string::npos) 
+        {
             current_chunk.textdata += current.substr(0, pos + chunk_separator.size());
-            if ((int)current_chunk.textdata.size() > chunk_size) {
+            if ((int)current_chunk.textdata.size() > chunk_size) 
+            {
                 // save chunk
                 current_chunk.filepos = filepos;
                 current_chunk.filename = filename;
@@ -372,13 +382,16 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int 
 
     }
     // add leftover data to last chunk
-    if (current_chunk.textdata.size() > 0) {
-        if (chunksFile.empty()) {
+    if (current_chunk.textdata.size() > 0) 
+    {
+        if (chunksFile.empty()) 
+        {
             current_chunk.filepos = filepos;
             current_chunk.filename = filename;
             chunksFile.push_back(current_chunk);
         }
-        else {
+        else 
+        {
             chunksFile.back().textdata += current_chunk.textdata;
         }
     }
