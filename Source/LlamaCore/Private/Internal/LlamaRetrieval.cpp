@@ -141,6 +141,7 @@ TArray<FLLMQueryReponse> FLlamaRetrieval::QueryVectorStore(std::vector<chunk> Ve
     LlamaModel = llama_init.model.get();
     Context = llama_init.context.get();
 
+
     // max batch size
     const uint64_t n_batch = llama_n_batch(Context);
     UE_LOG(LlamaLog, Display, TEXT("Query n_batch:%d ctx_n_batch:%d"), params.n_batch, n_batch)
@@ -206,7 +207,7 @@ TArray<FLLMQueryReponse> FLlamaRetrieval::QueryVectorStore(std::vector<chunk> Ve
         }
 
     //llama_perf_context_print(Context);
-    //llama_kv_cache_clear(Context);
+    llama_kv_cache_clear(Context);
     llama_batch_free(query_batch);
 
 
@@ -385,16 +386,10 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, chun
                 chunksFile.push_back(current_chunk);
                 // update filepos
                 filepos += (int)current_chunk.textdata.size();
-
-                if (pos > c_params.chunk_overlap)
-                {
-                    pos -= c_params.chunk_overlap;
-                }     
-                //UE_LOG(LlamaLog, Warning, TEXT("Pos:%d, current:%hs"), pos, current_chunk.textdata.c_str())
-
+                // chunk overlap if can
+                pos = pos > c_params.chunk_overlap ? pos - c_params.chunk_overlap : pos; 
                 // reset current_chunk
-                current_chunk = chunk();
-             
+                current_chunk = chunk();            
             }
           
             current = current.substr(pos + c_params.chunk_separator.size());
