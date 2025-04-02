@@ -30,6 +30,13 @@ bool FLlamaRetrieval::LoadModel(FLLMRetrivalParams Params)
     ChunkParams.chunk_separator = FLlamaString::ToStd(Params.ChunkSeparator);
     ChunkParams.chunk_overlap = Params.ChunkOverlap;
 
+    if (Params.ChunkOverlap >= Params.ChunkSize)
+    {
+        ChunkParams.chunk_overlap = 0;
+        UE_LOG(LlamaLog, Warning, TEXT("[%hs] chunk_overlap must be less than chunk_size"), __func__);
+
+    }
+
     if (params.chunk_size <= 0) {
         UE_LOG(LlamaLog, Warning, TEXT("chunk_size must be positive"));
         return false;
@@ -357,7 +364,7 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, chun
 		return chunksFile;
 	}
 
-
+    
     chunk current_chunk;
     char buffer[1024];
     int64_t filepos = 0;
@@ -368,6 +375,7 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, chun
         size_t pos;
         while ((pos = current.find(c_params.chunk_separator)) != std::string::npos)
         {
+
             current_chunk.textdata += current.substr(0, pos + c_params.chunk_separator.size());
             if ((int)current_chunk.textdata.size() > c_params.chunk_size)
             {
@@ -377,9 +385,18 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, chun
                 chunksFile.push_back(current_chunk);
                 // update filepos
                 filepos += (int)current_chunk.textdata.size();
+
+                if (pos > c_params.chunk_overlap)
+                {
+                    pos -= c_params.chunk_overlap;
+                }     
+                //UE_LOG(LlamaLog, Warning, TEXT("Pos:%d, current:%hs"), pos, current_chunk.textdata.c_str())
+
                 // reset current_chunk
                 current_chunk = chunk();
+             
             }
+          
             current = current.substr(pos + c_params.chunk_separator.size());
         }
 
