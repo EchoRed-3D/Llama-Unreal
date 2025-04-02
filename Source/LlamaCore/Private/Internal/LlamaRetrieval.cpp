@@ -14,7 +14,7 @@ bool FLlamaRetrieval::LoadModel(FLLMRetrivalParams Params)
     // load dynamic backends
     ggml_backend_load_all();
 
-    std::string Path = TCHAR_TO_UTF8(*FLlamaPaths::ParsePathIntoFullPath(Params.PathToModel));
+    std::string Path = TCHAR_TO_UTF8(*FLlamaPaths::ParsePathIntoFullPath(Params.PathToEmbeddingModel));
 
 
     params.n_batch = Params.Nbatch;
@@ -26,6 +26,9 @@ bool FLlamaRetrieval::LoadModel(FLLMRetrivalParams Params)
     params.chunk_separator = FLlamaString::ToStd(Params.ChunkSeparator);
     params.sampling.top_k = Params.TopK;
 
+    ChunkParams.chunk_size = Params.ChunkSize;
+    ChunkParams.chunk_separator = FLlamaString::ToStd(Params.ChunkSeparator);
+    ChunkParams.chunk_overlap = Params.ChunkOverlap;
 
     if (params.chunk_size <= 0) {
         UE_LOG(LlamaLog, Warning, TEXT("chunk_size must be positive"));
@@ -109,7 +112,7 @@ std::vector<chunk> FLlamaRetrieval::CreateVectorStore(std::vector<std::string> c
     params.context_files = context_files;
 
     std::vector<chunk> NewVectorStore;
-    NewVectorStore = SplitterFiles(context_files, params.chunk_size, params.chunk_separator);
+    NewVectorStore = SplitterFiles(context_files, ChunkParams);
 
     bool bSuccess = EmbeddingFiles(NewVectorStore);
 
@@ -219,12 +222,12 @@ FLlamaRetrieval::~FLlamaRetrieval()
 
 
 
-std::vector<chunk> FLlamaRetrieval::SplitterFiles(std::vector<std::string> context_files, int chunk_size, const std::string& chunk_separator)
+std::vector<chunk> FLlamaRetrieval::SplitterFiles(std::vector<std::string> context_files, chunk_params c_params)
 {
     std::vector<chunk> ChunksFiles;
 
     for (auto& context_file : context_files) {
-        std::vector<chunk> file_chunk = chunk_file(context_file, chunk_size, chunk_separator);
+        std::vector<chunk> file_chunk = chunk_file(context_file, c_params);
         ChunksFiles.insert(ChunksFiles.end(), file_chunk.begin(), file_chunk.end());
     }
     UE_LOG(LlamaLog, Display, TEXT("Number of chunks: %zu"), ChunksFiles.size());
@@ -343,12 +346,12 @@ bool FLlamaRetrieval::EmbeddingFiles(std::vector<chunk>& ChunkFiles)
     return true;
 }
 
-std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int chunk_size, const std::string& chunk_separator)
+std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, chunk_params c_params)
 {
 	std::vector<chunk> chunksFile;
-	std::ifstream f(filename.c_str());
+	std::ifstream File(filename.c_str());
 
-	if (!f.is_open()) 
+	if (!File.is_open())
 	{
 		UE_LOG(LlamaLog,Warning, TEXT("could not open file %hs"), filename.c_str());
 		return chunksFile;
@@ -359,14 +362,14 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int 
     char buffer[1024];
     int64_t filepos = 0;
     std::string current;
-    while (f.read(buffer, 1024)) 
+    while (File.read(buffer, 1024))
     {
-        current += std::string(buffer, f.gcount());
+        current += std::string(buffer, File.gcount());
         size_t pos;
-        while ((pos = current.find(chunk_separator)) != std::string::npos) 
+        while ((pos = current.find(c_params.chunk_separator)) != std::string::npos)
         {
-            current_chunk.textdata += current.substr(0, pos + chunk_separator.size());
-            if ((int)current_chunk.textdata.size() > chunk_size) 
+            current_chunk.textdata += current.substr(0, pos + c_params.chunk_separator.size());
+            if ((int)current_chunk.textdata.size() > c_params.chunk_size)
             {
                 // save chunk
                 current_chunk.filepos = filepos;
@@ -377,7 +380,7 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int 
                 // reset current_chunk
                 current_chunk = chunk();
             }
-            current = current.substr(pos + chunk_separator.size());
+            current = current.substr(pos + c_params.chunk_separator.size());
         }
 
     }
@@ -395,7 +398,7 @@ std::vector<chunk> FLlamaRetrieval::chunk_file(const std::string& filename, int 
             chunksFile.back().textdata += current_chunk.textdata;
         }
     }
-    f.close();
+    File.close();
     return chunksFile;
 }
 

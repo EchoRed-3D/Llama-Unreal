@@ -45,7 +45,7 @@ void FLlamaNativeRetrieval::LoadModel(bool bForceReload, TFunction<void(const FS
     if (IsModelLoaded() && !bForceReload)
     {
         //already loaded, we're done
-        return ModelLoadedCallback(RetrivalParams.PathToModel, 0);
+        return ModelLoadedCallback(RetrivalParams.PathToEmbeddingModel, 0);
     }
 
     //Copy so these dont get modified during enqueue op
@@ -74,7 +74,7 @@ void FLlamaNativeRetrieval::LoadModel(bool bForceReload, TFunction<void(const FS
 
                   if (ModelLoadedCallback)
                   {
-                      ModelLoadedCallback(RetrivalParams.PathToModel, 0);
+                      ModelLoadedCallback(RetrivalParams.PathToEmbeddingModel, 0);
                   }
                 }, TaskId);
             }
@@ -83,7 +83,7 @@ void FLlamaNativeRetrieval::LoadModel(bool bForceReload, TFunction<void(const FS
                 EnqueueGTTask([this, ModelLoadedCallback]
                     {
                         //On error will be triggered earlier in the chain, but forward our model loading error status here
-                        ModelLoadedCallback(RetrivalParams.PathToModel, 15);
+                        ModelLoadedCallback(RetrivalParams.PathToEmbeddingModel, 15);
                     }, TaskId);
             }
 

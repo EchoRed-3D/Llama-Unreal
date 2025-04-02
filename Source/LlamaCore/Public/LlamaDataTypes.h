@@ -482,7 +482,7 @@ public:
     FLLMRetrivalParams() {}
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    FString PathToModel = "./model.gguf";
+    FString PathToEmbeddingModel = "./model.gguf";
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     int32 GPULayers = 50;
@@ -497,16 +497,23 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     int32 Nbatch = 1024;
 
-    // chunk separator for context embedding
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params", meta = (MultiLine = true))
-    FString ChunkSeparator = TEXT("\n");
-
-    // chunk size for context embedding
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
-    int32 ChunkSize = 256; 
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params")
     int32 TopK = 4;
+
+
+    // chunk size for context embedding
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params | Chunk")
+    int32 ChunkSize = 256; 
+
+    // chunk size for context embedding
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params | Chunk")
+    int32 ChunkOverlap = 64;
+
+    // chunk separator for context embedding
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Model Params | Chunk", meta = (MultiLine = true))
+    FString ChunkSeparator = TEXT("\n");
+
 
 };
 
